@@ -23,17 +23,6 @@ generate_random_password() {
     echo "$random_password" # 输出密码
 }
 
-# 函数：踢出其他终端用户
-kick_other_users() {
-    current_tty=$(tty)
-    pts_list=$(who | awk '{print $2}')
-    for pts in $pts_list; do
-        if [ "$current_tty" != "/dev/$pts" ]; then
-            sudo pkill -9 -t "$pts"
-        fi
-    done
-}
-
 # 函数：修改 sshd_config 文件
 modify_sshd_config() {
     sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
@@ -67,9 +56,6 @@ modify_sshd_config() {
 apply_changes() {
     local password=$1
     
-    # 踢出其他用户
-    kick_other_users
-    
     # 设置密码
     echo "root:$password" | sudo chpasswd
     check_error "修改密码时出错"
@@ -79,9 +65,6 @@ apply_changes() {
     
     # 重启SSH服务
     restart_sshd_service
-    
-    # 再次踢出其他用户
-    kick_other_users
 }
 
 # 函数：获取 SSH 服务名称
@@ -157,16 +140,12 @@ main() {
             check_root
             password=$(generate_random_password)
             echo "生成的密码是：$password"
-            echo "请记住此密码！按任意键继续..."
-            read -n 1
             apply_changes "$password"
             ;;
         2)
             check_root
             read -p "请输入更改密码：" custom_password
             echo "即将设置密码：$custom_password"
-            echo "请确认密码正确！按任意键继续..."
-            read -n 1
             apply_changes "$custom_password"
             ;;
         *)
