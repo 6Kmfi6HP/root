@@ -2,7 +2,7 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "https://raw.githubusercontent.com/passeway/root/refs/heads/main/root.sh",
+      "destination": "https://raw.githubusercontent.com/6Kmfi6HP/root/refs/heads/main/root.sh",
       "permanent": true
     }
   ]

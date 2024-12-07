@@ -20,9 +20,18 @@ check_root() {
 # 函数：生成随机密码
 generate_random_password() {
     random_password=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9!@#$%^&*()_-')
-    echo "root:$random_password" | sudo chpasswd
-    check_error "生成随机密码时出错"
     echo "$random_password" # 输出密码
+}
+
+# 函数：踢出其他终端用户
+kick_other_users() {
+    current_tty=$(tty)
+    pts_list=$(who | awk '{print $2}')
+    for pts in $pts_list; do
+        if [ "$current_tty" != "/dev/$pts" ]; then
+            sudo pkill -9 -t "$pts"
+        fi
+    done
 }
 
 # 函数：修改 sshd_config 文件
@@ -45,27 +54,98 @@ modify_sshd_config() {
         check_error "追加 PermitRootLogin 时出错"
     fi
 
-    # 检查文件中是否存在以'PasswordAuthentication'开头的行
+    # 修改 PasswordAuthentication
     if grep -q '^PasswordAuthentication' /etc/ssh/sshd_config; then
-        # 存在匹配行，用'PasswordAuthentication yes'替换
         sudo sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-        check_error "修改 PasswordAuthentication 时出错"
     else
-        # 不存在匹配行，追加'PasswordAuthentication yes'到文件末尾
         echo 'PasswordAuthentication yes' | sudo tee -a /etc/ssh/sshd_config > /dev/null
-        check_error "追加 PasswordAuthentication 时出错"
     fi
+    check_error "修改 PasswordAuthentication 时出错"
+}
+
+# 函数：设置密码并应用更改
+apply_changes() {
+    local password=$1
+    
+    # 踢出其他用户
+    kick_other_users
+    
+    # 设置密码
+    echo "root:$password" | sudo chpasswd
+    check_error "修改密码时出错"
+    
+    # 修改SSH配置
+    modify_sshd_config
+    
+    # 重启SSH服务
+    restart_sshd_service
+    
+    # 再次踢出其他用户
+    kick_other_users
+}
+
+# 函数：获取 SSH 服务名称
+get_ssh_service_name() {
+    # 检查 ssh 服务
+    if sudo service ssh status >/dev/null 2>&1; then
+        echo "ssh"
+        return
+    fi
+    
+    # 检查 sshd 服务
+    if sudo service sshd status >/dev/null 2>&1; then
+        echo "sshd"
+        return
+    fi
+
+    # 如果都检测不到，返回默认值 sshd
+    echo "sshd"
 }
 
 # 函数：重启 SSHD 服务
 restart_sshd_service() {
-    sudo service sshd restart
-    check_error "重启 SSHD 服务时出错"
+    local service_name=$(get_ssh_service_name)
+    sudo service $service_name restart
+    check_error "重启 SSH 服务时出错"
+}
+
+# 显示帮助信息
+show_help() {
+    echo "用法: $0 [-p password]"
+    echo "选项:"
+    echo "  -p password    直接设置指定的密码"
+    echo "  -h            显示此帮助信息"
+    exit 0
 }
 
 # 主函数
 main() {
-    # 提示用户选择密码选项
+    # 处理命令行参数
+    while getopts "p:h" opt; do
+        case $opt in
+            h)
+                show_help  # show_help 函数中已包含 exit 0
+                ;;
+            p)
+                check_root
+                apply_changes "$OPTARG"
+                echo "密码已成功更改：$OPTARG"
+                # 删除下载的脚本
+                if [ -f "root.sh" ]; then
+                    rm -f "root.sh"
+                fi
+                exit 0
+                ;;
+            \?)
+                echo "无效选项: -$OPTARG" >&2
+                show_help
+                ;;
+        esac
+    done
+
+    shift $((OPTIND-1))
+
+    # 交互模式
     echo "请选择密码选项："
     echo "1. 生成密码"
     echo "2. 输入密码"
@@ -74,22 +154,19 @@ main() {
     case $option in
         1)
             check_root
-            password=$(generate_random_password) # 保存生成的密码
+            password=$(generate_random_password)
+            apply_changes "$password"
             ;;
         2)
+            check_root
             read -p "请输入更改密码：" custom_password
-            echo "root:$custom_password" | sudo chpasswd
-            check_error "修改密码时出错"
-            password=$custom_password # 保存输入的密码
+            apply_changes "$custom_password"
             ;;
         *)
             echo "无效选项 退出..."
             exit 1
             ;;
     esac
-
-    modify_sshd_config
-    restart_sshd_service
 
     echo "密码已成功更改：$password" # 输出密码
 
@@ -100,4 +177,4 @@ main() {
 }
 
 # 执行主函数
-main
+main "$@"
