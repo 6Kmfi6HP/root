@@ -128,8 +128,9 @@ main() {
                 ;;
             p)
                 check_root
-                apply_changes "$OPTARG"
-                echo "密码已成功更改：$OPTARG"
+                password="$OPTARG"
+                echo "即将设置的密码：$password"
+                apply_changes "$password"
                 # 删除下载的脚本
                 if [ -f "root.sh" ]; then
                     rm -f "root.sh"
@@ -155,11 +156,17 @@ main() {
         1)
             check_root
             password=$(generate_random_password)
+            echo "生成的密码是：$password"
+            echo "请记住此密码！按任意键继续..."
+            read -n 1
             apply_changes "$password"
             ;;
         2)
             check_root
             read -p "请输入更改密码：" custom_password
+            echo "即将设置密码：$custom_password"
+            echo "请确认密码正确！按任意键继续..."
+            read -n 1
             apply_changes "$custom_password"
             ;;
         *)
@@ -167,8 +174,6 @@ main() {
             exit 1
             ;;
     esac
-
-    echo "密码已成功更改：$password" # 输出密码
 
     # 删除下载的脚本
     if [ -f "root.sh" ]; then
